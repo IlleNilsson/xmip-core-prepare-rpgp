@@ -256,14 +256,15 @@ impl Prepare for Verifying {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use file::temporary::Folder;
     use pgp::composed::{EncryptionCaps, KeyType, SecretKeyParamsBuilder, SubkeyParamsBuilder};
     use pgp::crypto::ecc_curve::ECCCurve;
     use pgp::ser::Serialize;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     /// A key that signs with its primary and encrypts with its subkey,
-    /// written as files: the private one and the public one.
-    fn keys(name: &str) -> (PathBuf, PathBuf) {
+    /// written as files in `folder`: the private one and the public one.
+    fn keys(folder: &Path, name: &str) -> (PathBuf, PathBuf) {
         let mut encrypting = SubkeyParamsBuilder::default();
         encrypting
             .key_type(KeyType::ECDH(ECCCurve::Curve25519Legacy))
@@ -283,9 +284,8 @@ mod tests {
             .expect("parameters")
             .generate(thread_rng())
             .expect("generated");
-        let folder = std::env::temp_dir().join(format!("xmip-rpgp-{name}-{}", std::process::id()));
-        std::fs::create_dir_all(&folder).expect("a folder");
-        let (private, public) = (folder.join("key.priv"), folder.join("key.pub"));
+        let private = folder.join(format!("{name}.priv"));
+        let public = folder.join(format!("{name}.pub"));
         secret
             .to_writer(&mut File::create(&private).expect("created"))
             .expect("written");
@@ -303,7 +303,8 @@ mod tests {
 
     #[test]
     fn a_message_is_encrypted_to_a_recipient_and_decrypted_by_its_key() {
-        let (private, public) = keys("encrypt");
+        let folder = Folder::new("rpgp-encrypt");
+        let (private, public) = keys(&folder, "encrypt");
         let encrypting = Rpgp
             .encryption(
                 Direction::Outward,
@@ -328,7 +329,7 @@ mod tests {
             run(&*decrypting, &sealed).expect("decrypted"),
             b"<Order>secret</Order>"
         );
-        let (other, _) = keys("other");
+        let (other, _) = keys(&folder, "other");
         let stranger = Rpgp
             .encryption(
                 Direction::Inward,
@@ -343,7 +344,8 @@ mod tests {
 
     #[test]
     fn a_message_is_signed_and_verified_and_a_stranger_s_signature_refused() {
-        let (private, public) = keys("sign");
+        let folder = Folder::new("rpgp-sign");
+        let (private, public) = keys(&folder, "sign");
         let signing = Rpgp
             .signature(
                 Direction::Outward,
@@ -364,7 +366,7 @@ mod tests {
             .expect("opens");
         let signed = run(&*signing, b"<Order/>").expect("signed");
         assert_eq!(run(&*verifying, &signed).expect("verified"), b"<Order/>");
-        let (stranger, _) = keys("stranger");
+        let (stranger, _) = keys(&folder, "stranger");
         let foreign = Rpgp
             .signature(
                 Direction::Outward,
@@ -381,8 +383,7 @@ mod tests {
 
     #[test]
     fn a_key_that_is_not_one_is_refused_when_the_step_opens() {
-        let folder = std::env::temp_dir().join(format!("xmip-rpgp-none-{}", std::process::id()));
-        std::fs::create_dir_all(&folder).expect("a folder");
+        let folder = Folder::new("rpgp-none");
         let place = folder.join("not-a-key");
         std::fs::write(&place, b"plain text").expect("written");
         let refused = Rpgp

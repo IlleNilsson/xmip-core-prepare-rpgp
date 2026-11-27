@@ -14,11 +14,6 @@ when the step is opened; a passphrase-protected key is not opened yet.
 Offline (ADR-0045, amendment 2026-10-22): no key server, directory or
 revocation is looked up; a key's preferred key server is data, never an
 address reached.
-## Toolchain
-
-`rust-toolchain.toml` pins the toolchain for the whole estate. Do not change it
-here.
-
 ## Verification
 
 The included workflow is manual-only and calls the versioned shared workflow at
